@@ -16,7 +16,7 @@ const params = {
 
 function init() {
     if (!webGLAvailable()) {
-        showError('Browser Anda tidak mendukung WebGL. Silakan gunakan browser modern.');
+        showError('Browser ini tidak mendukung WebGL.');
         return;
     }
 
@@ -58,39 +58,73 @@ function setupScene() {
     controls = setupControls(camera, renderer.domElement);
 }
 
+function setupControls(camera, domElement) {
+    const controls = new THREE.OrbitControls(camera, domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.autoRotate = false;
+    controls.autoRotateSpeed = 2.0;
+    controls.rotateSpeed = 0.5;
+    controls.zoomSpeed = 1.2;
+    controls.panSpeed = 0.8;
+    controls.minDistance = 2;
+    controls.maxDistance = 20;
+    
+    return controls;
+}
+
 function loadModel() {
-    const loader = new THREE.GLTFLoader();
+    const mtlLoader = new THREE.MTLLoader();
+    const objLoader = new THREE.OBJLoader();
     document.getElementById('loading').style.display = 'block';
 
-    loader.load(
-        'models/monitor-aoc.glb',
-        function (gltf) {
-            model = gltf.scene;
+    mtlLoader.load('models/monitor-aoc.mtl', function (materials) {
+        console.log('Materials loaded:', materials);
+        materials.preload();
+
+        if (Object.keys(materials.materials).length === 0) {
+            console.error('No materials found in the MTL file.');
+        }
+
+        for (const materialName in materials.materialsInfo) {
+            const material = materials.materials[materialName];
+            if (material.map) {
+                material.map.wrapS = THREE.ClampToEdgeWrapping;
+                material.map.wrapT = THREE.ClampToEdgeWrapping;
+            }
+        }
+
+        objLoader.setMaterials(materials);
+        objLoader.load('models/monitor-aoc.obj', function (object) {
+            model = object;
+            console.log('Model loaded:', model);
+            
             model.traverse((node) => {
                 if (node.isMesh) {
+                    const materialName = node.material.name;
+                    node.material = materials.materials[materialName] || node.material;
                     node.castShadow = true;
                     node.receiveShadow = true;
-                    if (node.material) {
-                        node.material.envMapIntensity = 1;
-                        node.material.needsUpdate = true;
-                    }
                 }
             });
 
             scene.add(model);
             centerModel(model);
             document.getElementById('loading').style.display = 'none';
-        },
+        }, 
         function (xhr) {
             const percent = (xhr.loaded / xhr.total) * 100;
             document.getElementById('loading').textContent = 
                 `Loading model... ${Math.round(percent)}%`;
-        },
+        }, 
         function (error) {
             console.error('Error loading model:', error);
             showError('Error loading model: ' + error.message);
-        }
-    );
+        });
+    }, 
+    function (error) {
+        console.error('Error loading materials:', error);
+    });
 }
 
 function centerModel(model) {
